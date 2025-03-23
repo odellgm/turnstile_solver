@@ -101,6 +101,7 @@ print("Token:", token)
 Use this project entirely at your own risk. I hold no responsibility for any negative outcomes, including but not limited to API blocking and IP bans
 
 ## Donate
+If you find my work useful and want to encourage further development, you can do so by donating
 
 [//]: # ([![Donate]&#40;https://app.oxapay.com/media/btn/light-btn.png&#41;]&#40;https://oxapay.com/donate/42319117&#41;)
 
