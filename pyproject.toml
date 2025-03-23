@@ -22,7 +22,7 @@ classifiers = [
 requires-python = ">=3.10"
 
 [project.urls]
-Repository = "https://github.com/odell0111/turnstile_solver"
+Repository = "https://github.com/odellgm/turnstile_solver"
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }

@@ -15,7 +15,7 @@ TODO: Update
 
 ## Install
 ```bash
-pip install git+https://github.com/odell0111/turnstile_solver@main
+pip install git+https://github.com/odellgm/turnstile_solver@main
 ```
 ### Install Patchright patched chromium browser
 ```bash
