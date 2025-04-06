@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 
@@ -24,8 +25,14 @@ class Proxy:
       logger.warning("No proxy port specified")
 
   def dict(self):
-    p = {'server': self.server}
+    p = {
+      'server': self.server,
+      'bypass': '127.0.0.1, localhost',
+    }
     if self.username:
       p['username'] = self.username
       p['password'] = self.password
     return p
+
+  def __repr__(self) -> str:
+    return json.dumps(self.dict(), indent=2)

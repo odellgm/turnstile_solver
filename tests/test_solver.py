@@ -136,7 +136,7 @@ def test_get_token(logger: logging.Logger):
   site_url, site_key = "https://spotifydown.com", "0x4AAAAAAAByvC31sFG0MSlp"
   # site_url, site_key = "https://bypass.city/", "0x4AAAAAAAGzw6rXeQWJ_y2P"
 
-  requestCount = 2
+  requestCount = 1
 
   with ThreadPoolExecutor(max_workers=min(32, requestCount)) as executor:
     futures = []

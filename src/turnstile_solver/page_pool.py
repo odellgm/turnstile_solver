@@ -1,6 +1,6 @@
 import logging
 
-from patchright.async_api import BrowserContext, Page
+from patchright.async_api import BrowserContext, Page, Route
 from turnstile_solver.pool import Pool
 
 from .constants import MAX_PAGES_PER_CONTEXT
@@ -15,10 +15,11 @@ class PagePool(Pool):
                ):
     self.context = context
 
-    async def itemGetter():
-      return await self.context.new_page()
-
     super().__init__(
       size=max_pages,
-      item_getter=itemGetter,
+      item_getter=self._page_getter,
     )
+
+  async def _page_getter(self):
+    page = await self.context.new_page()
+    return page

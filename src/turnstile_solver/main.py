@@ -18,9 +18,9 @@ from rich.console import Group
 from rich.text import Text
 from multiprocessing import Process
 
-from turnstile_solver.proxy import Proxy
-from turnstile_solver.proxy_provider import ProxyProvider
 from . import constants as c
+from .proxy import Proxy
+from .proxy_provider import ProxyProvider
 from .custom_rich_help_formatter import CustomRichHelpFormatter
 from .solver_console import SolverConsole
 from .solver_console_highlighter import SolverConsoleHighlighter
@@ -34,7 +34,7 @@ __pname__ = "Turnstile Solver"
 
 # mdata = metadata.metadata(__pname__)
 # __version__ = mdata['Version']
-__version__ = "3.0"
+__version__ = "3.1"
 __homepage__ = "https://github.com/odellgm/turnstile_solver"  # mdata['Home-page']
 __author__ = "OGM"  # mdata['Author']
 __summary__ = "Automatically solve Cloudflare Turnstile captcha"  # mdata['Summary']
@@ -330,6 +330,7 @@ async def main():
     username = load_proxy_param(args.proxy_username)
     password = load_proxy_param(args.proxy_password)
     proxy = Proxy(args.proxy_server, username, password)
+    logger.debug(f"Global proxy server loaded. Server: '{proxy.server}'")
   else:
     proxy = None
 

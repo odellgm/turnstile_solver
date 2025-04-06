@@ -127,6 +127,7 @@ class TurnstileSolverServer:
 
   async def _handle_captcha_message_event(self):
     try:
+      logger.debug('Handling captcha message event')
       data: dict[str, Any] = await request.get_json(force=True)
       evt: CaptchaApiMessageEvent | str | None = data.pop('event', None)
       if not evt:

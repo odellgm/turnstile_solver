@@ -1,10 +1,7 @@
 import logging
-import re
 from pathlib import Path
 
-from turnstile_solver.proxy import Proxy
-
-_PROXY_PARSE_RE = re.compile(r'')
+from .proxy import Proxy
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +10,13 @@ class ProxyProvider:
   def __init__(self, proxies_fp: str | Path):
     self.proxies_fp = proxies_fp
     self._index = 0
-    self._proxies: list[Proxy] = []
+    self.proxies: list[Proxy] = []
 
   def get(self) -> Proxy | None:
-    if not self._proxies:
+    if not self.proxies:
       return
-    proxy = self._proxies[self._index]
-    self._index = (self._index + 1) % len(self._proxies)
+    proxy = self.proxies[self._index]
+    self._index = (self._index + 1) % len(self.proxies)
     return proxy
 
   def load(self):
@@ -34,6 +31,9 @@ class ProxyProvider:
           username, password = parts[1].split(':')
         else:
           username = password = None
-        self._proxies.append(Proxy(server, username, password))
+        self.proxies.append(Proxy(server, username, password))
         proxyCount += 1
       logger.info(f"{proxyCount} proxies loaded from '{self.proxies_fp}'")
+
+  def __repr__(self) -> str:
+    return str(self.proxies)

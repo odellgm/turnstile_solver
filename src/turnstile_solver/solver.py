@@ -65,6 +65,7 @@ BROWSER_ARGS = {
   '--no-service-autorun',
   '--password-store=basic',
   '--log-level=3',
+  '--proxy-bypass-list=<-loopback>;localhost;127.0.0.1;*.local',
 
   # Not needed, here just for reference
   # Network/Connection Tuning
@@ -294,6 +295,8 @@ class TurnstileSolver:
                         playwright: Playwright | None = None,
                         proxy: Proxy | None = None,
                         ) -> tuple[Browser, Playwright]:
+
+    proxy = proxy or self.proxy
 
     if not playwright:
       playwright = await async_playwright().start()

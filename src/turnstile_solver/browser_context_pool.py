@@ -60,7 +60,7 @@ class BrowserContextPool(Pool):
 
   async def _page_pool_getter(self):
     proxy = self._proxy_provider.get() if self._proxy_provider else None
-    proxy and logger.debug(f"Using proxy: {proxy.server}")
+    proxy and logger.debug(f"Using proxy: '{proxy.server}'")
     logger.debug(f"Getting browser context for browser: '{self._browser}'")
     context, self._playwright = await self._solver.get_browser_context(
       browser=self._browser if self._single_instance else None,
