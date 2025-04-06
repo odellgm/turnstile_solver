@@ -4,6 +4,7 @@ import logging
 import argparse
 import random
 import time
+
 import dotenv
 from pathlib import Path
 from threading import Thread
@@ -11,17 +12,20 @@ from threading import Thread
 import requests
 from pyngrok import ngrok
 from pyngrok.ngrok import NgrokTunnel
+from rich import traceback
 from rich.align import Align
 from rich.console import Group
 from rich.text import Text
 from multiprocessing import Process
 
+from turnstile_solver.proxy import Proxy
+from turnstile_solver.proxy_provider import ProxyProvider
 from . import constants as c
 from .custom_rich_help_formatter import CustomRichHelpFormatter
 from .solver_console import SolverConsole
 from .solver_console_highlighter import SolverConsoleHighlighter
 from .solver import TurnstileSolver
-from .utils import init_logger, simulate_intensive_task, get_file_handler
+from .utils import init_logger, simulate_intensive_task, get_file_handler, load_proxy_param
 from .turnstile_solver_server import TurnstileSolverServer
 
 _console = SolverConsole()
@@ -29,7 +33,8 @@ _console = SolverConsole()
 __pname__ = "Turnstile Solver"
 
 # mdata = metadata.metadata(__pname__)
-__version__ = "2.0"  # mdata['Version']
+# __version__ = mdata['Version']
+__version__ = "3.0"
 __homepage__ = "https://github.com/odellgm/turnstile_solver"  # mdata['Home-page']
 __author__ = "OGM"  # mdata['Author']
 __summary__ = "Automatically solve Cloudflare Turnstile captcha"  # mdata['Summary']
@@ -95,17 +100,20 @@ def _parse_arguments():
       raise argparse.ArgumentTypeError(f'"{value}" is not an integer')
     return value
 
-  parser.add_argument("-p", "--production", action="store_true", help=f"Whether the project is running in a production environment or on a resource-constrained server, such as one that spins down during periods of inactivity.")
-  parser.add_argument("-nn", "--no-ngrok", action="store_true", help=f"Do not use ngrok for keeping server alive on production.")
-  parser.add_argument("-ncomp", "--no-computations", action="store_true", help=f"Do not simulate intensive computations for keeping server alive on production.")
-  parser.add_argument("--headless", action="store_true", help=f"Open browser in headless mode. WARNING: This feature has never worked so far, captcha always fail! It's here only in case it works on future version of Playwright.")
   parser.add_argument("-bep", "--browser-executable-path", help=f"Chromium-based browser executable path. If not specified, Patchright (Playwright) will attempt to use its bundled version. Ensure you are using a Chromium-based browser installed with the command `patchright install chromium`. Other browsers may be detected by Cloudflare, which could result in the CAPTCHA not being solved.")
   parser.add_argument("-bp", "--browser-position", type=int, nargs='*', metavar="x|y", default=c.BROWSER_POSITION, help=f"Browser position x, y. Default: {c.BROWSER_POSITION}. If the browser window is positioned beyond the screen's resolution, it will be inaccessible, behaving similar to headless mode.")
-  parser.add_argument("-ps", "--proxy-server", help=f"Global browser proxy server in the format SCHEME://IP|ADDRESS:PORT. Ex: http://myproxy.com:3128")
+  parser.add_argument("-mbi", "--multiple-browser-instances", action='store_true', help=f"Whether to use a new browser instance for each context or not. This is not recommended since it can occupy a lot more memory. Also the initialization process for each instance can take a little more time so when running for production it's recommended to make some requests to initialize some instances. See '--max-contexts'.")
+  parser.add_argument("-mc", "--max-contexts", type=int, metavar="N", default=c.MAX_CONTEXTS, help=f"Max browser contexts. Default: {c.MAX_CONTEXTS}. Memory consumption increases proportionally with the number of browser contexts, specially if a new browser instance is created for each browser context.")
+  parser.add_argument("-mp", "--max-pages", type=int, metavar="N", default=c.MAX_PAGES_PER_CONTEXT, help=f"Max pages per browser. Default: {c.MAX_PAGES_PER_CONTEXT}. CAPTCHA-solving speed is impacted by the number of active pages (tabs) within a browser context.")
+  parser.add_argument("-ba", "--browser-args", nargs='+', help=f"Additional browser command line arguments.")
+
+  parser.add_argument("-ps", "--proxy-server", help=f"Global browser proxy server in the format: 'scheme://server:port'. Ex: http://myproxy.com:3128")
   parser.add_argument("-pun", "--proxy-username", help=f"Global browser proxy username: Use all caps to load from environment variables.")
   parser.add_argument("-pp", "--proxy-password", help=f"Global browser proxy password: Use all caps to load from environment variables.")
+  parser.add_argument("--proxies", metavar='PROXIES.txt', help=f"Path to a .txt file containing proxies in the format: 'scheme://server:port@username:password'. Each browser context will be assigned a unique proxy from this list.")
 
   parser.add_argument("-nfl", "--no-file-logs", action="store_true", help=f"Do not log to file '$HOME.turnstile_solver/logs.log'.")
+  parser.add_argument("-ll", "--log-level", type=int, default=logging.INFO, metavar="N", help=f"Global logger log level. Default: {logging.INFO}. CRITICAL = 50, FATAL = CRITICAL, ERROR = 40, WARNING = 30, INFO = 20, DEBUG = 10, NOTSET = 0")
 
   # Solver
   solver = parser.add_argument_group("Solver")
@@ -124,10 +132,16 @@ def _parse_arguments():
   server.add_argument("-svll", "--server-log-level", type=int, default=logging.INFO, metavar="N", help=f"TurnstileSolverServer log level. Default: {logging.INFO}")
   server.add_argument("-ife", "--ignore-food-events", action="store_true", help=f"Do not log CAPTCHA foot events when server log level is DEBUG or below.")
 
+  parser.add_argument("-p", "--production", action="store_true", help=f"Whether the project is running in a production environment or on a resource-constrained server, such as one that spins down during periods of inactivity.")
+  parser.add_argument("-nn", "--no-ngrok", action="store_true", help=f"Do not use ngrok for keeping server alive on production.")
+  parser.add_argument("-ncomp", "--no-computations", action="store_true", help=f"Do not simulate intensive computations for keeping server alive on production.")
+  parser.add_argument("--headless", action="store_true", help=f"Open browser in headless mode. [#ffc800]WARNING[/]: This feature has never worked so far, captcha always fail! It's here only in case it works on future version of Playwright.")
+
   # Miscellaneous Options
   misc = parser.add_argument_group("Miscellaneous")
   misc.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help='Show this help message.')
   misc.add_argument("-v", "--version", action='version', version=f'{__pname__} v{__version__}', help="Show version and exit.")
+
 
   return parser.parse_args()
 
@@ -196,6 +210,10 @@ async def run_server(
     production: bool = False,
     use_ngrok: bool = True,
     perform_computations: bool = True,
+    max_contexts: int = c.MAX_CONTEXTS,
+    max_pages_per_context: int = c.MAX_PAGES_PER_CONTEXT,
+    single_browser_instance: bool = False,
+    proxy_provider: ProxyProvider | None = None,
 
     console: SolverConsole | None = SolverConsole(),
 
@@ -216,9 +234,8 @@ async def run_server(
     attempt_timeout: int = c.CAPTCHA_ATTEMPT_TIMEOUT,
     headless: bool = False,
     solver_log_level: int | str = logging.INFO,
-    proxy_server: str | None = None,
-    proxy_username: str | None = None,
-    proxy_password: str | None = None,
+    proxy: Proxy | None = None,
+    browser_args: list[str] | None = None,
 ):
   server = TurnstileSolverServer(
     host=host,
@@ -243,12 +260,16 @@ async def run_server(
     headless=headless,
     console=console,
     log_level=solver_log_level,
-    proxy_server=proxy_server,
-    proxy_username=proxy_username,
-    proxy_password=proxy_password,
+    proxy=proxy,
+    browser_args=browser_args,
   )
   server.solver = solver
-  await solver.server.create_page_pool()
+  await solver.server.create_browser_context_pool(
+    max_contexts=max_contexts,
+    max_pages_per_context=max_pages_per_context,
+    single_instance=single_browser_instance,
+    proxy_provider=proxy_provider,
+  )
 
   try:
     # Keep it breathing
@@ -271,7 +292,6 @@ async def main():
 
   dotenv.load_dotenv()
 
-  from rich import traceback
   traceback.install(
     show_locals=True,
     console=_console,
@@ -292,6 +312,8 @@ async def main():
 
   args = _parse_arguments()
 
+  logging.root.setLevel(args.log_level)
+
   if not c.PROJECT_HOME_DIR.exists():
     c.PROJECT_HOME_DIR.mkdir(parents=True)
 
@@ -303,11 +325,32 @@ async def main():
     logger.error("For keeping it alive you must either use Ngrok, perform computations, or both")
     return
 
+  # Load global proxy
+  if args.proxy_server:
+    username = load_proxy_param(args.proxy_username)
+    password = load_proxy_param(args.proxy_password)
+    proxy = Proxy(args.proxy_server, username, password)
+  else:
+    proxy = None
+
+  if args.proxies:
+    if not Path(args.proxies).is_file():
+      logger.error(f"File: '{args.proxies}', does not exist")
+      return
+    proxyProvider = ProxyProvider(args.proxies)
+    proxyProvider.load()
+  else:
+    proxyProvider = None
+
   await run_server(
     # Production
     production=args.production,
     use_ngrok=not args.no_ngrok,
     perform_computations=not args.no_computations,
+    max_contexts=args.max_contexts,
+    max_pages_per_context=args.max_pages,
+    single_browser_instance=not args.multiple_browser_instances,
+    proxy_provider=proxyProvider,
 
     # TurnstileSolverServer
     host=args.host,
@@ -327,9 +370,8 @@ async def main():
     attempt_timeout=args.captcha_timeout,
     headless=args.headless,
     solver_log_level=args.solver_log_level,
-    proxy_server=args.proxy_server,
-    proxy_username=args.proxy_username,
-    proxy_password=args.proxy_password,
+    proxy=proxy,
+    browser_args=args.browser_args,
   )
 
 

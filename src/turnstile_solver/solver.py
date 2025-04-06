@@ -1,15 +1,13 @@
 import datetime
 import logging
-import os
-import re
 import time
 from pathlib import Path
 from typing import Callable, Awaitable
 from patchright.async_api import async_playwright, Page, BrowserContext, Browser, Playwright
-from turnstile_solver.utils import is_all_caps
 
 from . import constants as c
 from .enums import CaptchaApiMessageEvent
+from .proxy import Proxy
 from .solver_console import SolverConsole
 from .turnstile_result import TurnstileResult
 from .turnstile_solver_server import TurnstileSolverServer, CAPTCHA_EVENT_CALLBACK_ENDPOINT
@@ -67,6 +65,26 @@ BROWSER_ARGS = {
   '--no-service-autorun',
   '--password-store=basic',
   '--log-level=3',
+
+  # Not needed, here just for reference
+  # Network/Connection Tuning
+  # '--enable-features=NetworkService,ParallelDownloading',
+  # '--max-connections=255',  # Total active connections
+  # '--max-parallel-downloads=50',  # Concurrent downloads
+  # '--socket-reuse-policy=2',  # Aggressive socket reuse
+
+  # Thread/Process Management
+  # '--renderer-process-limit=0',  # Unlimited renderers
+  # '--in-process-gpu',  # Reduce process count # NO
+  # '--disable-site-isolation-trials',  # Prevent tab grouping # NO
+
+  # Background Throttling (both included by default)
+  # '--disable-backgrounding-occluded-windows',  # Keep hidden tabs active
+  # '--disable-background-networking',  # Prevent background sync
+
+  # Protocol-Specific
+  # '--http2-no-coalesce-host',  # Bypass HTTP/2 coalescing
+  # '--force-http2-hpack-huffman=off',  # Reduce HPACK overhead
 }
 
 
@@ -83,9 +101,8 @@ class TurnstileSolver:
                headless: bool = False,
                console: SolverConsole = SolverConsole(),
                log_level: int | str = logging.INFO,
-               proxy_server: str | None = None,
-               proxy_username: str | None = None,
-               proxy_password: str | None = None,
+               proxy: Proxy | None = None,
+               browser_args: list[str] | None = None,
                ):
 
     logger.setLevel(log_level)
@@ -97,19 +114,14 @@ class TurnstileSolver:
 
     self.server: TurnstileSolverServer | None = server
 
-    self.browser_args = list(BROWSER_ARGS)
+    self.browser_args = list(BROWSER_ARGS) + (browser_args or [])
     if browser_position:
       self.browser_args.append(f'--window-position={browser_position[0]},{browser_position[1]}')
     self._error: str | None = None
     self.max_attempts = max_attempts
     self.attempt_timeout = attempt_timeout
 
-    if bool(proxy_username) ^ bool(proxy_password):
-      raise ValueError("Proxy username and password must both be specified")
-
-    self.proxy_server = self._load_proxy_param(proxy_server)
-    self.proxy_username = self._load_proxy_param(proxy_username)
-    self.proxy_password = self._load_proxy_param(proxy_password)
+    self.proxy = proxy
 
   @property
   def _server_down(self) -> bool:
@@ -156,7 +168,7 @@ class TurnstileSolver:
     onFinishCallbacks: list[Callable[[], Awaitable[None]]] = []
 
     if isinstance(page, bool):
-      pageOrContext, playwright = await self._get_browser_context()
+      pageOrContext, playwright = await self.get_browser_context()
       if page is True:
         result.browser_context = pageOrContext
       else:
@@ -278,40 +290,35 @@ class TurnstileSolver:
 
     return page
 
-  async def _get_browser_context(self) -> tuple[BrowserContext, Playwright]:
-    playwright = await async_playwright().start()
+  async def get_browser(self,
+                        playwright: Playwright | None = None,
+                        proxy: Proxy | None = None,
+                        ) -> tuple[Browser, Playwright]:
 
-    if self.proxy_server:
-      logger.debug(f"Using proxy: '{self.proxy_server}'")
-      if not re.search(r':\d+$', self.proxy_server):
-        logger.warning("No proxy port specified")
-      proxy = {
-        'server': self.proxy_server,
-      }
-      if self.proxy_username:
-        logger.debug("Using proxy credentials")
-        # logger.debug(f"Proxy Username: {self.proxy_username}")
-        # logger.debug(f"Proxy Password: {self.proxy_password}")
-        proxy['username'] = self.proxy_username
-        proxy['password'] = self.proxy_password
-    else:
-      proxy = None
+    if not playwright:
+      playwright = await async_playwright().start()
 
     browser: Browser | None = await playwright.chromium.launch(
       executable_path=self.browser_executable_path,
       # channel=channel,
       args=self.browser_args,
       headless=self.headless,
-      proxy=proxy,
+      proxy=proxy.dict() if proxy else None,
     )
-    return await browser.new_context(), playwright
+    return browser, playwright
 
-  @staticmethod
-  def _load_proxy_param(param) -> str | None:
-    if is_all_caps(param):
-      if p := os.environ.get(param):
-        logger.debug("Proxy parameter loaded from environment variables")
-        return p
-      else:
-        logger.warning("Proxy parameter intended to be loaded from environment variables was not found")
-    return param
+  async def get_browser_context(self,
+                                browser: Browser | None = None,
+                                playwright: Playwright | None = None,
+                                proxy: Proxy | None = None,
+                                ) -> tuple[BrowserContext, Playwright]:
+
+    if not browser:
+      browser, _ = await self.get_browser(playwright)
+
+    context = await browser.new_context(proxy=proxy.dict() if proxy else None)
+
+    # await context.route('**', lambda route: route.continue_())
+    # await context.set_extra_http_headers({'HTTP2-Settings': 'MAX_CONCURRENT_STREAMS=100'})
+
+    return context, playwright

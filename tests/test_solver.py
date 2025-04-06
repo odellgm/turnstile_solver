@@ -86,11 +86,12 @@ async def test_solve(solver: TurnstileSolver):
     print("TOKEN", r.token)
 
 
-async def test_server(solver: TurnstileSolver):
-  await solver.server.create_page_pool()
-  solver.max_attempts = 5
-  solver.attempt_timeout = 30
-  await solver.server.run(debug=True)
+# TODO: Update
+# async def test_server(solver: TurnstileSolver):
+#   await solver.server.create_page_pool()
+#   solver.max_attempts = 5
+#   solver.attempt_timeout = 30
+#   await solver.server.run(debug=True)
 
 
 def _get_token(
@@ -130,11 +131,12 @@ def _get_token(
 def test_get_token(logger: logging.Logger):
 
   server_url = "http://127.0.0.1:8088"
+  # server_url = "https://d8e6-35-185-23-87.ngrok-free.app"
 
   site_url, site_key = "https://spotifydown.com", "0x4AAAAAAAByvC31sFG0MSlp"
   # site_url, site_key = "https://bypass.city/", "0x4AAAAAAAGzw6rXeQWJ_y2P"
 
-  requestCount = 1
+  requestCount = 2
 
   with ThreadPoolExecutor(max_workers=min(32, requestCount)) as executor:
     futures = []

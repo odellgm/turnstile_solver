@@ -9,16 +9,16 @@ from typing import TYPE_CHECKING
 import asyncio
 
 from quart import Quart, Response, request
-from patchright.async_api import BrowserContext
 
-from .page_pool import PagePool
 from .enums import CaptchaApiMessageEvent
-from .constants import PORT, HOST, CAPTCHA_EVENT_CALLBACK_ENDPOINT
+from .constants import PORT, HOST, CAPTCHA_EVENT_CALLBACK_ENDPOINT, MAX_CONTEXTS, MAX_PAGES_PER_CONTEXT
+from .proxy_provider import ProxyProvider
 from .solver_console import SolverConsole
 from .constants import SECRET
+from .browser_context_pool import BrowserContextPool
 
 if TYPE_CHECKING:
-  from solver import TurnstileSolver
+  from .solver import TurnstileSolver
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,14 @@ class TurnstileSolverServer:
     self._captcha_message_event_handlers: dict[str, TurnstileSolverServer.MessageEventHandler] = {}
     self.on_shutting_down = on_shutting_down
     # /solve endpoint intended fields
-    self.browser_context: BrowserContext | None = None
-    self.page_pool: PagePool | None = None
+    # self.browser_context: BrowserContext | None = None
+    self.browser_context_pool: BrowserContextPool | None = None
+    # deprecated
+    # self.page_pool: PagePool | None = None
     self.secret = secret
     self.ignore_food_events = ignore_food_events
 
+    self._lock = asyncio.Lock()
     self._setup_routes()
 
   def _setup_routes(self) -> None:
@@ -73,10 +76,27 @@ class TurnstileSolverServer:
     logger.debug(f"Captcha message event handler with id '{id}' unsubscribed")
     self._captcha_message_event_handlers.pop(id, None)
 
-  async def create_page_pool(self):
-    """Create PagePool instance to be used in /solve endpoint requests"""
-    browser_context, _ = await self.solver._get_browser_context()
-    self.page_pool = PagePool(browser_context)
+  async def create_browser_context_pool(self,
+                                        max_contexts: int = MAX_CONTEXTS,
+                                        max_pages_per_context: int = MAX_PAGES_PER_CONTEXT,
+                                        single_instance: bool = False,
+                                        proxy_provider: ProxyProvider | None = None,
+                                        ):
+    assert self.solver is not None
+    self.browser_context_pool = BrowserContextPool(
+      solver=self.solver,
+      max_contexts=max_contexts,
+      max_pages_per_context=max_pages_per_context,
+      single_instance=single_instance,
+      proxy_provider=proxy_provider,
+    )
+    await self.browser_context_pool.init()
+
+  # deprecated
+  # async def create_page_pool(self):
+  #   """Create PagePool instance to be used in /solve endpoint requests"""
+  #   browser_context, _ = await self.solver._get_browser_context()
+  #   self.page_pool = PagePool(browser_context)
 
   async def wait_for_server(self, timeout: float = 5):
     endTime = time.time() + timeout
@@ -139,8 +159,9 @@ class TurnstileSolverServer:
     try:
       if self.solver is None:
         return self._error("No TurnstileSolver instance has been assigned")
-      if not self.page_pool:
-        return self._error("No PagePool instance has been assigned")
+
+      if not self.browser_context_pool:
+        return self._error("No BrowserContextPool instance has been assigned")
 
       data: dict[str, str] = await request.get_json(force=True)
       if not (site_url := data.get('site_url')):
@@ -148,7 +169,10 @@ class TurnstileSolverServer:
       if not (site_key := data.get('site_key')):
         return self._bad("site_key required")
 
-      page = await self.page_pool.get()
+      async with self._lock:
+        pagePool = await self.browser_context_pool.get()
+        page = await pagePool.get()
+
       try:
         if not (result := await self.solver.solve(
             site_url=site_url,
@@ -158,7 +182,8 @@ class TurnstileSolverServer:
         )):
           return self._error(self.solver.error)
       finally:
-        await self.page_pool.put_back(page)
+        await self.browser_context_pool.put_back(pagePool)
+        await pagePool.put_back(page)
 
       self._page = result.page
       return self._ok({

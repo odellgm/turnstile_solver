@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 
@@ -8,6 +9,8 @@ from rich.logging import RichHandler
 from .solver_console import SolverConsole
 
 _faker = Faker(locale='en_US')
+
+logger = logging.getLogger(__name__)
 
 
 def init_logger(
@@ -64,3 +67,11 @@ def is_all_caps(word: str) -> bool:
   return filtered and all(filtered)
 
 
+def load_proxy_param(param) -> str | None:
+  if is_all_caps(param):
+    if p := os.environ.get(param):
+      logger.debug("Proxy parameter loaded from environment variables")
+      return p
+    else:
+      logger.warning("Proxy parameter intended to be loaded from environment variables was not found")
+  return param

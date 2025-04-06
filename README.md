@@ -40,8 +40,11 @@ solver --proxy-server http://myproxy.com:3128 --proxy-username user --proxy-pass
 ```bash
 solver --proxy-server MY_PROXY_SERVER --proxy-username MY_PROXY_USERNAME --proxy-password MY_PROXY_PASSWORD
 ```
+##### Use a proxy from file per browser context
+```bash
+solver --proxies myproxies.txt
+```
 
-TODO: Implement proxy rotation system
 
 ### Get token
 
