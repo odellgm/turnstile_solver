@@ -1,7 +1,7 @@
 ## 🚨🚨 ALERT 🚨🚨
 I'm going to delete this repository soon, as I've moved it to [https://github.com/odell0111/turnstile_solver](https://github.com/odell0111/turnstile_solver), my original account, which was temporarily restricted.
 
-⭐ Star the new repo to stay updated
+⭐ Star the new (original) repo to stay updated
 
 
 # Turnstile Solver
