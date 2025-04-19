@@ -1,3 +1,8 @@
+## 🚨🚨 ALERT 🚨🚨
+I'm going to delete this repository soon, as I've moved it to [https://github.com/odell0111/turnstile_solver](https://github.com/odell0111/turnstile_solver), my original account, which was temporarily restricted.
+
+
+
 # Turnstile Solver
 
 Python server to automatically solve Cloudflare Turnstile CAPTCHA with an average solving time of two seconds (counting with a fast internet connection).
